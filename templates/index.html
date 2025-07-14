@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Chatbot Playground</title>
+  <link href="https://unpkg.com/tailwindcss@^2/dist/tailwind.min.css" rel="stylesheet" />
+  <style>
+    .chat-body {
+      max-width: 900px;
+      margin: 3rem auto;
+    }
+    .server-message, .client-message {
+      padding: 0.75rem 1.5rem;
+      margin-bottom: 0.5rem;
+      border-radius: 0.5rem;
+      width: 100%;
+      word-break: break-word;
+    }
+    .server-message {
+      background-color: #444;
+      text-align: left;
+    }
+    .client-message {
+      background-color: #555;
+      text-align: right;
+    }
+    .server-message ul, .server-message ol {
+      margin-left: 1.5rem;
+      margin-bottom: 0.5rem;
+      display: block;
+    }
+    .server-message strong {
+      color: #93c5fd;
+    }
+    .server-message em {
+      color: #fbbf24;
+    }
+    .server-message code {
+      background: #222;
+      padding: 2px 4px;
+      border-radius: 4px;
+      font-size: 0.95em;
+    }
+  </style>
+  
+</head> 
+<body class="bg-black text-white font-sans" style="font-size: 13px;"></body>
+
+  <div class="chat-body bg-gray-800 rounded-xl shadow-lg p-6 w-full">
+    <h3 class="text-center text-2xl font-semibold mb-2">Chatbot Playground</h3>
+    <p class="text-center text-sm text-gray-300 mb-4" id="header">Ask a question</p>
+    <hr class="border-gray-600 mb-4" />
+
+    <div id="messages" class="overflow-y-auto space-y-2 mb-6 w-full" style="max-height: 600px;"></div>
+
+    <form id="chat-form" class="flex flex-col sm:flex-row items-center gap-3 w-full" enctype="multipart/form-data">
+      <input type="text" id="messageText" placeholder="Write your question"
+             class="flex-grow p-2 rounded bg-gray-700 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 w-full" />
+      <input type="file" id="imageInput" accept="image/*" class="text-sm text-gray-300" />
+      <button id="send" type="submit"
+              class="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded transition">Send</button>
+    </form>
+  </div>
+
+  <script>
+    function simpleMarkdown(text) {
+      // Escape HTML
+      text = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+      // Headings
+      text = text.replace(/^### (.*)$/gim, '<h3 class="mt-3 mb-1 text-lg font-semibold">$1</h3>');
+      text = text.replace(/^## (.*)$/gim, '<h2 class="mt-4 mb-2 text-xl font-bold">$1</h2>');
+      text = text.replace(/^# (.*)$/gim, '<h1 class="mt-5 mb-3 text-2xl font-bold">$1</h1>');
+
+      // Bold and italics
+      text = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+      text = text.replace(/__(.*?)__/g, '<strong>$1</strong>');
+      text = text.replace(/(?<!\*)\*(?!\*)(.*?)\*(?!\*)/g, '<em>$1</em>');
+      text = text.replace(/_(.*?)_/g, '<em>$1</em>');
+
+      // Inline code
+      text = text.replace(/`([^`]+)`/g, '<code class="bg-gray-800 text-white px-1 rounded">$1</code>');
+
+      // Ordered lists
+      text = text.replace(/(?:^|\n)(\d+\..+(?:\n\d+\..+)*)/g, function (match, listBlock) {
+        const items = listBlock
+          .split('\n')
+          .map(line => line.replace(/^\d+\.\s+/, ''))
+          .map(item => `<li>${item}</li>`)
+          .join('');
+        return `<ol class="list-decimal list-inside pl-4 my-1 leading-snug">${items}</ol>`;
+      });
+
+      // Unordered lists
+      text = text.replace(/(?:^|\n)([\*\-].+(?:\n[\*\-].+)*)/g, function (match, listBlock) {
+        const items = listBlock
+          .split('\n')
+          .map(line => line.replace(/^[\*\-]\s+/, ''))
+          .map(item => `<li>${item}</li>`)
+          .join('');
+        return `<ul class="list-disc list-inside pl-4 my-1 leading-snug">${items}</ul>`;
+      });
+
+      // Paragraphs: anything not already part of block tags
+      const blocks = text.split(/\n{2,}/).map(block => {
+        if (/^\s*<(ul|ol|li|h\d|pre|code)/.test(block)) return block;
+        return `<p class="my-1 leading-snug">${block.trim()}</p>`;
+      });
+
+      return blocks.join('');
+    }
+
+    const form = document.getElementById("chat-form");
+    const messageInput = document.getElementById("messageText");
+    const messages = document.getElementById("messages");
+    const header = document.getElementById("header");
+    const button = document.getElementById("send");
+    const imageInput = document.getElementById("imageInput");
+
+    form.addEventListener("submit", async function (event) {
+      event.preventDefault();
+
+      const userMessage = messageInput.value.trim();
+      const imageFile = imageInput.files[0];
+
+      if (!userMessage && !imageFile) return;
+
+      const userDiv = document.createElement("div");
+      userDiv.className = "client-message";
+      if (imageFile) {
+        const img = document.createElement("img");
+        img.src = URL.createObjectURL(imageFile);
+        img.alt = "Uploaded image";
+        img.className = "max-w-xs mt-2 rounded block ml-auto";
+        userDiv.appendChild(img);
+      }
+      if (userMessage) {
+        const textP = document.createElement("p");
+        textP.innerHTML = userMessage;
+        userDiv.appendChild(textP);
+      }
+      messages.appendChild(userDiv);
+
+      messages.scrollTop = messages.scrollHeight;
+      messageInput.value = "";
+      imageInput.value = "";
+      header.innerText = "Chatbot is thinking...";
+      button.innerText = "Loading...";
+      button.disabled = true;
+
+      try {
+        const formData = new FormData();
+        formData.append("message", userMessage);
+        if (imageFile) formData.append("image", imageFile);
+
+        const response = await fetch("/chat", {
+          method: "POST",
+          body: formData,
+        });
+
+        const data = await response.json();
+
+        const botDiv = document.createElement("div");
+        botDiv.className = "server-message";
+        botDiv.innerHTML = simpleMarkdown(data.response);
+        messages.appendChild(botDiv);
+      } catch (err) {
+        const errDiv = document.createElement("div");
+        errDiv.className = "server-message";
+        errDiv.innerHTML = '<p><strong>Error:</strong> Could not reach the server.</p>';
+        messages.appendChild(errDiv);
+      }
+
+      messages.scrollTop = messages.scrollHeight;
+      header.innerText = "Ask a question";
+      button.innerText = "Send";
+      button.disabled = false;
+    });
+  </script>
+</body>
+</html>
